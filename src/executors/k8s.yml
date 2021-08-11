@@ -1,0 +1,13 @@
+description: An image with kubectl installed for jobs where you need to get information from what's running.
+
+parameters:
+    repository:
+        description: 'The repository to use'
+        default: 'public.ecr.aws/c2p8z4x9/k8-builder'
+    tag:
+        description: 'Docker tag to use.'
+        default: 'v6.0.11'
+        type: string
+
+docker:
+    - image: '<< parameters.repository >>:<< parameters.tag >>'

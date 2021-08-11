@@ -1,0 +1,113 @@
+description: |
+    Use this job to get a currently running image tag for doing canary or blue-green deploys.
+
+parameters:
+    environment:
+        description: |
+            The environment you want to grab the image from.
+            Defaults to prod if no environment is provided.
+        default: 'prod'
+        type: string
+
+    namespace:
+        description: 'The namespace for your deploy.'
+        type: string
+
+    workload_name:
+        description: 'The running workload that you need the image of. Usually $ENVIRONMENT-$APPNAME'
+        type: string
+# I probably need to explain the usecase of this more here or in the readme
+    default_image:
+        description: |
+            If a running image isn't found (such as on the first deploy) then this is the image tag to use instead.
+            It should be set to whatever image push is set to, if you set to a file then use the file name.
+            If you set this to an actual tag then make sure to set default_image_type to string.
+            This defaults to .build_number, which is the output of the polaris setup-build-number.sh script.
+        default: .build_number
+        type: string
+
+    default_image_type:
+        description: |
+            If you prefer to provide a string default image instead of reading from a file
+            You can set this to "string" and it will use the value set in "default_image" as a string instead of file
+        default: 'file'
+        type: string
+
+    override_deploy:
+        description: |
+            If you want to ignore what's currently deployed and make a push the new code, set this to true.
+        default: false
+        type: boolean
+
+    workspace_root:
+        description: |
+            Workspace root path that is either an absolute path or a path relative to the working directory.
+            Defaults to "." (the working directory).
+        default: '.'
+        type: string
+
+executor:
+    name: k8s
+# add validation checks
+steps:
+    - attach_workspace:
+        at: << parameters.workspace-root >>
+    - run:
+        name: Get rancher token
+        command: |
+            ENVIRONMENT=<< parameters.environment >>
+
+            if $ENVIRONMENT == "prod" ; then
+                RANCHER_TOKEN=${RANCHER_PROD_TOKEN}
+                RANCHER_CLUSTER_NAME=${RANCHER_PROD_CLUSTER_NAME}
+                RANCHER_CLUSTER_ID=${RANCHER_PROD_CLUSTER_ID}
+                RANCHER_PROJECT_ID=${RANCHER_PROD_PROJECT_ID}
+                if [ -z RANCHER_TOKEN ] ; then
+                    echo "RANCHER_PROD_TOKEN is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_CLUSTER_NAME ] ; then
+                    echo "RANCHER_PROD_CLUSTER_NAME is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_CLUSTER_ID ] ; then
+                    echo "RANCHER_PROD_CLUSTER_ID is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_PROJECT_ID ] ; then
+                    echo "RANCHER_PROD_PROJECT_ID is not set! Please set this in your CircleCI variables."
+            else
+                RANCHER_TOKEN=${RANCHER_NONPROD_TOKEN}
+                RANCHER_CLUSTER_NAME=${RANCHER_NONPROD_CLUSTER_NAME}
+                RANCHER_CLUSTER_ID=${RANCHER_NONPROD_CLUSTER_ID}
+                RANCHER_PROJECT_ID=${RANCHER_NONPROD_PROJECT_ID}
+                if [ -z RANCHER_TOKEN ] ; then
+                    echo "RANCHER_NONPROD_TOKEN is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_CLUSTER_NAME ] ; then
+                    echo "RANCHER_NONPROD_CLUSTER_NAME is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_CLUSTER_ID ] ; then
+                    echo "RANCHER_NONPROD_CLUSTER_ID is not set! Please set this in your CircleCI variables."
+                if [ -z RANCHER_PROJECT_ID ] ; then
+                    echo "RANCHER_NONPROD_PROJECT_ID is not set! Please set this in your CircleCI variables."
+
+            ./get_rancher_token.sh -t $RANCHER_TOKEN
+    - run:
+        name: Get running Image
+        command: |
+            IMAGE=`kubectl get deployment -n << parameters.namespace >> -o=jsonpath='{$.spec.template.spec.containers[:1].image}' << parameters.workload_name >>` || true
+            IMAGE_TAG=(${IMAGE//:/ })
+            echo ${IMAGE_TAG[1]} > .<< parameters.environment >>_tag
+
+            cat .<< parameters.environment >>_tag
+            echo '=========='
+
+            if << parameters.override_deploy >> || grep -xq "" .<< parameters.environment >>_tag ; then
+                if << parameters.default_image_type >> == 'file' ; then
+                    echo "override set or no running image found, grabbing image from file"
+                    cat << parameters.default_image >> > .<< parameters.environment >>_tag
+                    cat << parameters.default_image >>
+                    cat .<< parameters.environment >>_tag
+                else
+                    echo "override set or no running image found, using provided image"
+                    echo << parameters.default_image >> > .<< parameters.environment >>_tag
+                    echo .<< parameters.environment >>_tag
+                fi
+            fi
+
+    - persist_to_workspace:
+        root: '<< parameters.workspace_root >>'
+        paths: [ .<< parameters.environment >>_tag ]
