@@ -51,7 +51,7 @@ executor:
 # add validation checks
 steps:
     - attach_workspace:
-        at: << parameters.workspace-root >>
+        at: << parameters.workspace_root >>
     - run:
         name: Get rancher token
         command: |

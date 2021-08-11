@@ -4,6 +4,7 @@ parameters:
     repository:
         description: 'The repository to use'
         default: 'public.ecr.aws/c2p8z4x9/k8-builder'
+        type: string
     tag:
         description: 'Docker tag to use.'
         default: 'v6.0.11'
